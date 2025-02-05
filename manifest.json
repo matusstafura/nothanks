@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "No Thanks",
+  "version": "0.1.0",
+  "description": "Hides YouTube results based on specified keywords.",
+  "permissions": ["scripting", "storage"],
+  "icons": {
+    "48": "icons/icon.png"
+  },
+  "host_permissions": [
+    "https://www.youtube.com/*",
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "action": {
+      "default_popup": "popup.html"
+  }
+}
+
