@@ -51,7 +51,6 @@ const filterConfig = [
   }
 ];
 
-
 /**
  * Hides elements based on the provided filter configuration.
  */
@@ -73,6 +72,18 @@ function hideFilteredResults() {
     });
   });
 }
+
+// Listen for changes to the filter
+chrome.storage.onChanged.addListener(function(changes, namespace) {
+  if (changes.names) {
+    hideFilteredResults();
+  }
+});
+
+// Listen for changes to the DOM
+const observer = new MutationObserver(() => {
+  hideFilteredResults();
+});
 
 // Initial call
 hideFilteredResults();
