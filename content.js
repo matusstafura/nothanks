@@ -31,24 +31,24 @@ const filterList = () => {
 const filterConfig = [
   {
     // Regular video results (homepage)
-    tag: "yt-formatted-string#video-title", 
+    tag: "span.yt-core-attributed-string", 
     parent: "ytd-rich-item-renderer"
   },
   {
     // Shorts in /shorts
-    tag: "h2.ytShortsVideoTitleViewModelShortsVideoTitle span", 
-    parent: "ytd-reel-video-renderer" 
+    tag: "span.yt-core-attributed-string",
+    parent: "div.reel-video-in-sequence-new"
   },
   {
-    // Regular video results (search)
+    // TITLE: Regular video results (search)
     tag: "yt-formatted-string", // Video results in search
-    parent: "ytd-video-renderer"
+    parent: "ytd-item-section-renderer"
   },
-  {
-    // Shorts in search
-    tag: "ytm-shorts-lockup-view-model-v2 div h3 a span", 
-    parent: "ytm-shorts-lockup-view-model-v2"
-  }
+  // {
+  //   // Shorts in search
+  //   tag: "ytm-shorts-lockup-view-model-v2 div h3 a span", 
+  //   parent: "ytm-shorts-lockup-view-model-v2"
+  // }
 ];
 
 /**
