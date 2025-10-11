@@ -1,90 +1,240 @@
-// Enable or disable logging
-const enableLogging = false;
+// ============================================
+// CONFIGURATION - Easy to modify
+// ============================================
+const CONFIG = {
+  enableLogging: false,
+  minKeywordLength: 5,
+  
+  // Selector configurations - YouTube changes these frequently
+  // Add new selectors here as YouTube updates its structure
+  selectors: [
+    {
+      name: "Homepage Videos",
+      titleSelector: "span.yt-core-attributed-string",
+      containerSelector: "ytd-rich-item-renderer",
+      enabled: true
+    },
+    {
+      name: "Shorts Feed",
+      titleSelector: "span.yt-core-attributed-string",
+      containerSelector: "div.reel-video-in-sequence-new",
+      enabled: true
+    },
+    {
+      name: "Search Results",
+      titleSelector: "yt-formatted-string#video-title",
+      containerSelector: "ytd-video-renderer",
+      enabled: true
+    },
+    {
+      name: "Subscription Feed",
+      titleSelector: "yt-formatted-string#video-title",
+      containerSelector: "ytd-grid-video-renderer",
+      enabled: true
+    }
+    // Add more configurations as needed
+  ]
+};
+
+// ============================================
+// UTILITIES
+// ============================================
 
 /**
- * Logs blocked content when logging is enabled.
- * @param {Object} details - The details of the blocked element.
+ * Logs information when logging is enabled
  */
-function logBlocked(details) {
-  if (enableLogging) {
-    console.log("Blocked:", details);
+function log(message, data = null) {
+  if (CONFIG.enableLogging) {
+    console.log(`[YouTube Blocker] ${message}`, data || '');
   }
 }
 
 /**
- * Retrieves the list of filtered names from storage.
- * @returns {Promise} - The list of filtered names.
+ * Logs blocked content with details
  */
-const filterList = () => {
+function logBlocked(configName, keyword, element, container) {
+  if (CONFIG.enableLogging) {
+    console.log(`[YouTube Blocker] BLOCKED by "${keyword}"`, {
+      config: configName,
+      title: element.textContent.trim().substring(0, 100),
+      element: element,
+      container: container
+    });
+  }
+}
+
+/**
+ * Retrieves keywords from storage
+ */
+async function getKeywords() {
   return new Promise((resolve) => {
-    chrome.storage.local.get(['names'], function(result) {
-      let all = [];
-      if (result.names) {
-        all = result.names.split("\n");
-      }
-      resolve(all);
+    chrome.storage.local.get(['names'], (result) => {
+      const keywords = result.names ? result.names.split("\n").filter(k => k.trim()) : [];
+      log(`Loaded ${keywords.length} keywords`);
+      resolve(keywords);
     });
   });
 }
 
-// Array of objects specifying tag to search and parent to remove
-const filterConfig = [
-  {
-    // Regular video results (homepage)
-    tag: "span.yt-core-attributed-string", 
-    parent: "ytd-rich-item-renderer"
-  },
-  {
-    // Shorts in /shorts
-    tag: "span.yt-core-attributed-string",
-    parent: "div.reel-video-in-sequence-new"
-  },
-  {
-    // TITLE: Regular video results (search)
-    tag: "yt-formatted-string", // Video results in search
-    parent: "ytd-item-section-renderer"
-  },
-  // {
-  //   // Shorts in search
-  //   tag: "ytm-shorts-lockup-view-model-v2 div h3 a span", 
-  //   parent: "ytm-shorts-lockup-view-model-v2"
-  // }
-];
+// ============================================
+// FILTERING LOGIC
+// ============================================
 
 /**
- * Hides elements based on the provided filter configuration.
+ * Checks if text matches any keyword (case-insensitive partial match)
  */
-function hideFilteredResults() {
-  filterList().then((filterList) => {
-    filterConfig.forEach((config) => {
-      const elements = document.querySelectorAll(config.tag);
-      elements.forEach((element) => {
-        filterList.forEach((filter) => {
-          if (element.textContent.toLowerCase().includes(filter.toLowerCase())) {
-            const parent = element.closest(config.parent);
-            if (parent) {
-              parent.style.display = 'none';
-              logBlocked({ parent, element });
-            }
-          }
-        });
-      });
-    });
-  });
+function matchesKeyword(text, keywords) {
+  const lowerText = text.toLowerCase();
+  return keywords.find(keyword => 
+    lowerText.includes(keyword.toLowerCase())
+  );
 }
 
-// Listen for changes to the filter
-chrome.storage.onChanged.addListener(function(changes, namespace) {
+/**
+ * Hides a single element if it matches keywords
+ */
+function processElement(element, config, keywords) {
+  const text = element.textContent?.trim();
+  if (!text) return false;
+
+  const matchedKeyword = matchesKeyword(text, keywords);
+  
+  if (matchedKeyword) {
+    const container = element.closest(config.containerSelector);
+    if (container && container.style.display !== 'none') {
+      container.style.display = 'none';
+      logBlocked(config.name, matchedKeyword, element, container);
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Processes all elements for a given configuration
+ */
+function processConfig(config, keywords) {
+  if (!config.enabled) {
+    log(`Skipping disabled config: ${config.name}`);
+    return 0;
+  }
+
+  const elements = document.querySelectorAll(config.titleSelector);
+  let blockedCount = 0;
+
+  elements.forEach(element => {
+    if (processElement(element, config, keywords)) {
+      blockedCount++;
+    }
+  });
+
+  if (blockedCount > 0) {
+    log(`${config.name}: Blocked ${blockedCount} items`);
+  }
+
+  return blockedCount;
+}
+
+/**
+ * Main filtering function
+ */
+async function filterContent() {
+  const keywords = await getKeywords();
+  
+  if (keywords.length === 0) {
+    log('No keywords to filter');
+    return;
+  }
+
+  log('Starting filter scan...');
+  let totalBlocked = 0;
+
+  CONFIG.selectors.forEach(config => {
+    totalBlocked += processConfig(config, keywords);
+  });
+
+  if (totalBlocked > 0) {
+    log(`Total items blocked: ${totalBlocked}`);
+  }
+}
+
+// ============================================
+// OBSERVERS & INITIALIZATION
+// ============================================
+
+/**
+ * Debounce function to avoid excessive filtering
+ */
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Debounced filter function (runs max once per 300ms)
+const debouncedFilter = debounce(filterContent, 300);
+
+/**
+ * Set up MutationObserver to watch for DOM changes
+ */
+function initObserver() {
+  const observer = new MutationObserver((mutations) => {
+    // Check if any mutations actually added nodes
+    const hasAddedNodes = mutations.some(mutation => mutation.addedNodes.length > 0);
+    if (hasAddedNodes) {
+      debouncedFilter();
+    }
+  });
+
+  // Start observing the document body for changes
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  log('MutationObserver initialized');
+  return observer;
+}
+
+// ============================================
+// EVENT LISTENERS
+// ============================================
+
+// Listen for storage changes (when user updates keywords)
+chrome.storage.onChanged.addListener((changes, namespace) => {
   if (changes.names) {
-    hideFilteredResults();
+    log('Keywords updated, re-filtering...');
+    filterContent();
   }
 });
 
-// Listen for changes to the DOM
-const observer = new MutationObserver(() => {
-  hideFilteredResults();
-});
+// Listen for URL changes (YouTube is a SPA)
+let lastUrl = location.href;
+new MutationObserver(() => {
+  const currentUrl = location.href;
+  if (currentUrl !== lastUrl) {
+    lastUrl = currentUrl;
+    log('URL changed, re-filtering...');
+    setTimeout(filterContent, 500); // Small delay for content to load
+  }
+}).observe(document, { subtree: true, childList: true });
 
-// Initial call
-hideFilteredResults();
+// ============================================
+// STARTUP
+// ============================================
 
+log('Extension loaded');
+log('Configuration:', CONFIG);
+
+// Initial filter
+setTimeout(filterContent, 1000); // Wait for initial page load
+
+// Start observing
+initObserver();

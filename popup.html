@@ -1,19 +1,133 @@
+<!DOCTYPE html>
 <html>
-    <head></head>
-    <link rel="stylesheet" href="styles/main.css">
-    <body>
-        <div>
-            <div id="popup">
-                <textarea></textarea>
-                <button>save</button>
-            </div>
-            <ul>
-                <li>Insert the strings you want to block</li>
-                <li>One string per line</li>
-                <li>Click save to save the changes and relliad youtube tab</li>
-                <li>Minimum length of string is 5</li>
-            </ul>
-        </div>
-        <script src="popup.js"></script>
-    </body>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            width: 400px;
+            min-height: 300px;
+            margin: 0;
+            padding: 15px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 14px;
+        }
+        
+        #popup {
+            margin-bottom: 15px;
+        }
+        
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #4285f4;
+        }
+        
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            background: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        button:hover {
+            background: #3367d6;
+        }
+        
+        button:active {
+            background: #2851a3;
+        }
+        
+        #status {
+            display: none;
+            padding: 8px;
+            margin-top: 10px;
+            border-radius: 4px;
+            font-size: 13px;
+            text-align: center;
+        }
+        
+        #status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        #status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        #stats {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+        }
+        
+        ul {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 13px;
+            color: #666;
+        }
+        
+        li {
+            margin-bottom: 5px;
+        }
+        
+        .tip {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-left: 3px solid #4285f4;
+            border-radius: 3px;
+            font-size: 12px;
+            color: #555;
+        }
+        
+        .tip strong {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div id="popup">
+        <textarea placeholder="Enter keywords to block, one per line..."></textarea>
+        <button>Save Keywords</button>
+        <div id="status"></div>
+        <div id="stats">0 active keywords</div>
+    </div>
+    
+    <ul>
+        <li>One keyword per line</li>
+        <li>Blocks videos containing the keyword (not exact match)</li>
+        <li>Minimum length: 5 characters</li>
+        <li>Duplicates and empty lines are removed automatically</li>
+    </ul>
+    
+    <div class="tip">
+        <strong>💡 Tip:</strong> Use Ctrl+S (Cmd+S on Mac) to save quickly
+    </div>
+    
+    <script src="popup.js"></script>
+</body>
 </html>
