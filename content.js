@@ -268,6 +268,14 @@ new MutationObserver(() => {
   }
 }).observe(document, { subtree: true, childList: true });
 
+// YouTube's own navigation event (fires on every SPA page change, incl. next short)
+document.addEventListener('yt-navigate-finish', () => setTimeout(filterContent, 300));
+
+// Shorts swap content in place without reliably adding DOM nodes, so poll
+setInterval(() => {
+  if (location.pathname.startsWith('/shorts/')) filterContent();
+}, 700);
+
 // ============================================
 // STARTUP
 // ============================================
