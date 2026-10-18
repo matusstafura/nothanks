@@ -7,32 +7,36 @@ const CONFIG = {
   
   // Selector configurations - YouTube changes these frequently
   // Add new selectors here as YouTube updates its structure
+  // Container-first: YouTube renames title elements often, containers less so.
+  // Title selectors are tried in order; if none match, falls back to the
+  // container's own text (minus channel/metadata when a title is found).
   selectors: [
     {
-      name: "Homepage Videos",
-      titleSelector: "span.yt-core-attributed-string",
-      containerSelector: "ytd-rich-item-renderer",
-      enabled: true
-    },
-    {
-      name: "Shorts Feed",
-      titleSelector: "span.yt-core-attributed-string",
-      containerSelector: "div.reel-video-in-sequence-new",
-      enabled: true
-    },
-    {
-      name: "Search Results",
-      titleSelector: "yt-formatted-string#video-title",
-      containerSelector: "ytd-video-renderer",
-      enabled: true
-    },
-    {
-      name: "Subscription Feed",
-      titleSelector: "yt-formatted-string#video-title",
-      containerSelector: "ytd-grid-video-renderer",
+      name: "Video Cards",
+      containerSelector: [
+        "ytd-rich-item-renderer",
+        "ytd-video-renderer",
+        "ytd-grid-video-renderer",
+        "ytd-compact-video-renderer",
+        "ytd-playlist-renderer",
+        "yt-lockup-view-model",
+        "ytm-shorts-lockup-view-model",
+        "ytm-shorts-lockup-view-model-v2",
+        "ytd-reel-item-renderer"
+      ].join(","),
+      titleSelector: [
+        "h3[title]",
+        "a.yt-lockup-metadata-view-model__title",
+        ".yt-lockup-metadata-view-model__title",
+        "yt-formatted-string#video-title",
+        "#video-title",
+        "a[title]",
+        ".shortsLockupViewModelHostMetadata",
+        "h3",
+        "span.yt-core-attributed-string"
+      ],
       enabled: true
     }
-    // Add more configurations as needed
   ]
 };
 
@@ -68,11 +72,18 @@ function logBlocked(configName, keyword, element, container) {
  */
 async function getKeywords() {
   return new Promise((resolve) => {
-    chrome.storage.local.get(['names'], (result) => {
-      const keywords = result.names ? result.names.split("\n").filter(k => k.trim()) : [];
-      log(`Loaded ${keywords.length} keywords`);
-      resolve(keywords);
-    });
+    // After an extension reload/update, old content scripts lose their context
+    if (!chrome.runtime?.id) return resolve([]);
+    try {
+      chrome.storage.local.get(['names'], (result) => {
+        const keywords = result?.names ? result.names.split("\n").filter(k => k.trim()) : [];
+        log(`Loaded ${keywords.length} keywords`);
+        resolve(keywords);
+      });
+    } catch (e) {
+      log('Extension context invalidated, reload the page');
+      resolve([]);
+    }
   });
 }
 
@@ -91,28 +102,42 @@ function matchesKeyword(text, keywords) {
 }
 
 /**
- * Hides a single element if it matches keywords
+ * Returns the title text of a container, trying each title selector in order
  */
-function processElement(element, config, keywords) {
-  const text = element.textContent?.trim();
-  if (!text) return false;
-
-  const matchedKeyword = matchesKeyword(text, keywords);
-  
-  if (matchedKeyword) {
-    const container = element.closest(config.containerSelector);
-    if (container && container.style.display !== 'none') {
-      container.style.display = 'none';
-      logBlocked(config.name, matchedKeyword, element, container);
-      return true;
-    }
+function getTitleElement(container, titleSelectors) {
+  for (const sel of titleSelectors) {
+    const el = container.querySelector(sel);
+    const text = (el?.getAttribute('title') || el?.textContent || '').trim();
+    if (text) return { el, text };
   }
-  
-  return false;
+  return null;
 }
 
 /**
- * Processes all elements for a given configuration
+ * Hides a single container if its title matches keywords
+ */
+function processContainer(container, config, keywords) {
+  if (container.style.display === 'none') return false;
+
+  // Match title first, then the whole card text (channel name, metadata)
+  const title = getTitleElement(container, config.titleSelector);
+  const text = (container.innerText || container.textContent || '').trim();
+  if (!text) return false;
+
+  const matchedKeyword = matchesKeyword(`${title?.text || ''}\n${text}`, keywords);
+  if (!matchedKeyword) return false;
+
+  // Hide the outermost matching card (e.g. rich-item wrapping a lockup)
+  let target = container;
+  const outer = container.parentElement?.closest(config.containerSelector);
+  if (outer) target = outer;
+  target.style.display = 'none';
+  logBlocked(config.name, matchedKeyword, title?.el || container, target);
+  return true;
+}
+
+/**
+ * Processes all containers for a given configuration
  */
 function processConfig(config, keywords) {
   if (!config.enabled) {
@@ -120,20 +145,36 @@ function processConfig(config, keywords) {
     return 0;
   }
 
-  const elements = document.querySelectorAll(config.titleSelector);
   let blockedCount = 0;
-
-  elements.forEach(element => {
-    if (processElement(element, config, keywords)) {
-      blockedCount++;
-    }
+  document.querySelectorAll(config.containerSelector).forEach(container => {
+    if (processContainer(container, config, keywords)) blockedCount++;
   });
 
   if (blockedCount > 0) {
     log(`${config.name}: Blocked ${blockedCount} items`);
   }
-
   return blockedCount;
+}
+
+/**
+ * Shorts player (/shorts/...): hiding a reel with display:none breaks the
+ * scroller, so instead skip to the next short when the current one matches.
+ */
+let lastSkippedUrl = null;
+function skipBlockedShort(keywords) {
+  if (!location.pathname.startsWith('/shorts/')) return;
+  const reel = document.querySelector('ytd-reel-video-renderer');
+  const text = reel?.innerText?.trim();
+  if (!text || lastSkippedUrl === location.href) return;
+
+  const matchedKeyword = matchesKeyword(text, keywords);
+  if (!matchedKeyword) return;
+
+  const next = document.querySelector('#navigation-button-down button');
+  if (!next) return;
+  lastSkippedUrl = location.href;
+  log(`Skipping short, matched "${matchedKeyword}"`);
+  next.click();
 }
 
 /**
@@ -148,6 +189,7 @@ async function filterContent() {
   }
 
   log('Starting filter scan...');
+  skipBlockedShort(keywords);
   let totalBlocked = 0;
 
   CONFIG.selectors.forEach(config => {
